@@ -1,242 +1,277 @@
 /**
  * Property manager for Obsidian notes
  */
-import { EOL } from 'os';
-import { parse, stringify } from 'yaml';
-import { ObsidianClient } from '../../obsidian/client.js';
-import { createLogger } from '../../utils/logging.js';
+import { EOL } from "os";
+import { parse, stringify } from "yaml";
+import { ObsidianClient } from "../../obsidian/client.js";
+import { createLogger, LoggerConfig, LogLevel } from "../../utils/logging.js";
 import {
-  ObsidianProperties,
-  ObsidianPropertiesSchema,
-  PropertyManagerResult,
-  PropertyUpdateSchema,
-  ValidationResult
-} from './types.js';
+	ObsidianProperties,
+	ObsidianPropertiesSchema,
+	PropertyManagerResult,
+	PropertyUpdateSchema,
+	ValidationResult
+} from "./types.js";
+
+// Logger Configuration Debug using schema
+const loggerConfig: LoggerConfig = {
+	level: LogLevel.DEBUG,
+	includeTimestamps: true,
+	includeLevel: true,
+	maskSensitiveData: false,
+	sensitiveFields: [],
+	files: true,
+	logDir: "./logs"
+};
 
 // Create a logger for property operations
-const logger = createLogger('PropertyManager');
+const logger = createLogger("PropertyManager", loggerConfig);
 
 /**
  * Manages YAML frontmatter properties in Obsidian notes
  */
 export class PropertyManager {
-  constructor(private client: ObsidianClient) {}
+	constructor(private client: ObsidianClient) {}
 
-  /**
-   * Parse YAML frontmatter from note content
-   * @param content The note content
-   * @returns Extracted properties
-   */
-  parseProperties(content: string): ObsidianProperties {
-    try {
-      // Extract frontmatter between --- markers (handles both \n and \r\n)
-      const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
-      if (!match) {
-        logger.debug('No frontmatter found in content');
-        return {};
-      }
+	/**
+	 * Parse YAML frontmatter from note content
+	 * @param content The note content
+	 * @returns Extracted properties
+	 */
+	parseProperties(content: string): ObsidianProperties {
+		try {
+			// Extract frontmatter between --- markers (handles both \n and \r\n)
+			const match = content.match(/^---\r?\n([\s\S]*?)\r?\n---/);
+			if (!match) {
+				logger.debug("No frontmatter found in content");
+				return {};
+			}
 
-      const frontmatter = match[1];
-      // Parse YAML first
-      const rawProperties = parse(frontmatter);
+			const frontmatter = match[1];
+			// Parse YAML first
+			const rawProperties = parse(frontmatter);
 
-      // Validate the raw parsed object against the schema
-      const validationResult = ObsidianPropertiesSchema.safeParse(rawProperties);
+			// Validate the raw parsed object against the schema
+			const validationResult =
+				ObsidianPropertiesSchema.safeParse(rawProperties);
 
-      if (!validationResult.success) {
-        // Log validation errors and return empty if invalid
-        logger.warn('Frontmatter validation failed:', { 
-          validationError: validationResult.error.flatten() 
-        });
-        return {}; // Return empty object for invalid frontmatter
-      }
+			if (!validationResult.success) {
+				// Log validation errors and return empty if invalid
+				logger.warn("Frontmatter validation failed:", {
+					validationError: validationResult.error.flatten()
+				});
+				return {}; // Return empty object for invalid frontmatter
+			}
 
-      // Use the validated data from now on
-      const validatedProperties = validationResult.data;
+			// Use the validated data from now on
+			const validatedProperties = validationResult.data;
 
-      // Handle tags transformation on validated data
-      if (validatedProperties.tags && Array.isArray(validatedProperties.tags)) {
-        // Create a new array to avoid modifying the validated data directly if needed elsewhere
-        validatedProperties.tags = validatedProperties.tags.map((tag: string) =>
-          tag.startsWith('#') ? tag.substring(1) : tag
-        );
-      }
+			// Handle tags transformation on validated data
+			if (validatedProperties.tags && Array.isArray(validatedProperties.tags)) {
+				// Create a new array to avoid modifying the validated data directly if needed elsewhere
+				validatedProperties.tags = validatedProperties.tags.map(
+					(tag: string) => (tag.startsWith("#") ? tag.substring(1) : tag)
+				);
+			}
 
-      // Return the validated (and potentially transformed) properties
-      return validatedProperties;
-    } catch (error) {
-      logger.error('Error parsing properties:', error instanceof Error ? error : { error: String(error) });
-      return {};
-    }
-  }
+			// Return the validated (and potentially transformed) properties
+			return validatedProperties;
+		} catch (error) {
+			logger.error(
+				"Error parsing properties:",
+				error instanceof Error ? error : { error: String(error) }
+			);
+			return {};
+		}
+	}
 
-  /**
-   * Generate YAML frontmatter from properties
-   * @param properties The properties to convert to YAML
-   * @returns YAML frontmatter string
-   */
-  generateProperties(properties: Partial<ObsidianProperties>): string {
-    try {
-      // Remove undefined values
-      const cleanProperties = Object.fromEntries(
-        Object.entries(properties).filter(([_, v]) => v !== undefined)
-      );
+	/**
+	 * Generate YAML frontmatter from properties
+	 * @param properties The properties to convert to YAML
+	 * @returns YAML frontmatter string
+	 */
+	generateProperties(properties: Partial<ObsidianProperties>): string {
+		try {
+			// Remove undefined values
+			const cleanProperties = Object.fromEntries(
+				Object.entries(properties).filter(([_, v]) => v !== undefined)
+			);
 
-      // Generate YAML with platform-specific line endings
-      const yaml = stringify(cleanProperties);
-      return `---${EOL}${yaml}---${EOL}`;
-    } catch (error) {
-      logger.error('Error generating properties:', error instanceof Error ? error : { error: String(error) });
-      throw error;
-    }
-  }
+			// Generate YAML with platform-specific line endings
+			const yaml = stringify(cleanProperties);
+			return `---${EOL}${yaml}---${EOL}`;
+		} catch (error) {
+			logger.error(
+				"Error generating properties:",
+				error instanceof Error ? error : { error: String(error) }
+			);
+			throw error;
+		}
+	}
 
-  /**
-   * Validate property values against schema
-   * @param properties The properties to validate
-   * @returns Validation result
-   */
-  validateProperties(properties: Partial<ObsidianProperties>): ValidationResult {
-    const result = PropertyUpdateSchema.safeParse(properties);
-    
-    if (result.success) {
-      return { valid: true, errors: [] };
-    }
+	/**
+	 * Validate property values against schema
+	 * @param properties The properties to validate
+	 * @returns Validation result
+	 */
+	validateProperties(
+		properties: Partial<ObsidianProperties>
+	): ValidationResult {
+		const result = PropertyUpdateSchema.safeParse(properties);
 
-    return {
-      valid: false,
-      errors: result.error.errors.map(err =>
-        `${err.path.join('.')}: ${err.message}`
-      )
-    };
-  }
+		if (result.success) {
+			return { valid: true, errors: [] };
+		}
 
-  /**
-   * Merge new properties with existing ones
-   * @param existing The existing properties
-   * @param updates The new properties to merge
-   * @param replace Whether to replace arrays instead of merging them
-   * @returns The merged properties
-   */
-  mergeProperties(
-    existing: ObsidianProperties,
-    updates: Partial<ObsidianProperties>,
-    replace: boolean = false
-  ): ObsidianProperties {
-    const merged = { ...existing };
+		return {
+			valid: false,
+			errors: result.error.errors.map(
+				(err) => `${err.path.join(".")}: ${err.message}`
+			)
+		};
+	}
 
-    for (const [key, value] of Object.entries(updates)) {
-      // Skip undefined values and timestamp fields
-      if (value === undefined || key === 'created' || key === 'modified') continue;
+	/**
+	 * Merge new properties with existing ones
+	 * @param existing The existing properties
+	 * @param updates The new properties to merge
+	 * @param replace Whether to replace arrays instead of merging them
+	 * @returns The merged properties
+	 */
+	mergeProperties(
+		existing: ObsidianProperties,
+		updates: Partial<ObsidianProperties>,
+		replace: boolean = false
+	): ObsidianProperties {
+		const merged = { ...existing };
+		logger.debug(`Merging properties:`, {
+			existing,
+			updates,
+			replace
+		});
 
-      const currentValue = merged[key as keyof ObsidianProperties];
+		for (const [key, value] of Object.entries(updates)) {
+			// Skip undefined values and timestamp fields
+			if (value === undefined || key === "created" || key === "modified")
+				continue;
 
-      // Handle arrays based on replace flag
-      if (Array.isArray(value) && Array.isArray(currentValue)) {
-        merged[key as keyof ObsidianProperties] = replace ?
-          value :
-          [...new Set([...currentValue, ...value])] as any;
-      }
-      // Special handling for custom object - deep merge
-      else if (key === 'custom' && typeof value === 'object' && value !== null) {
-        merged.custom = {
-          ...merged.custom,
-          ...value
-        };
-      }
-      // Default case - replace value
-      else {
-        merged[key as keyof ObsidianProperties] = value as any;
-      }
-    }
+			const currentValue = merged[key as keyof ObsidianProperties];
 
-    // Always update modified date (this is the only place we set it)
-    merged.modified = new Date().toISOString();
+			// Handle arrays based on replace flag
+			if (Array.isArray(value) && Array.isArray(currentValue)) {
+				merged[key as keyof ObsidianProperties] = replace
+					? value
+					: ([...new Set([...currentValue, ...value])] as any);
+			}
+			// Default case - replace value
+			else {
+				merged[key as keyof ObsidianProperties] = value as any;
+			}
+		}
 
-    return merged;
-  }
+		// Always update modified date (this is the only place we set it)
+		merged.modified = new Date().toISOString();
 
-  /**
-   * Get properties from a note
-   * @param filepath Path to the note
-   * @returns The properties from the note
-   */
-  async getProperties(filepath: string): Promise<PropertyManagerResult> {
-    try {
-      logger.debug(`Getting properties from file: ${filepath}`);
-      const content = await this.client.getFileContents(filepath);
-      const properties = this.parseProperties(content);
+		logger.debug(`Merged properties:`, {
+			merged
+		});
 
-      return {
-        success: true,
-        message: 'Properties retrieved successfully',
-        properties
-      };
-    } catch (error) {
-      logger.error(`Failed to get properties from ${filepath}:`, error instanceof Error ? error : { error: String(error) });
-      return {
-        success: false,
-        message: `Failed to get properties: ${error instanceof Error ? error.message : String(error)}`,
-        errors: [String(error)]
-      };
-    }
-  }
+		return merged;
+	}
 
-  /**
-   * Update properties of a note
-   * @param filepath Path to the note
-   * @param newProperties The new properties to apply
-   * @param replace Whether to replace arrays instead of merging them
-   * @returns The result of the update operation
-   */
-  async updateProperties(
-    filepath: string,
-    newProperties: Partial<ObsidianProperties>,
-    replace: boolean = false
-  ): Promise<PropertyManagerResult> {
-    try {
-      // Validate new properties
-      const validation = this.validateProperties(newProperties);
-      if (!validation.valid) {
-        logger.warn(`Invalid properties for ${filepath}:`, { errors: validation.errors });
-        return {
-          success: false,
-          message: 'Invalid properties',
-          errors: validation.errors
-        };
-      }
+	/**
+	 * Get properties from a note
+	 * @param filepath Path to the note
+	 * @returns The properties from the note
+	 */
+	async getProperties(filepath: string): Promise<PropertyManagerResult> {
+		try {
+			logger.debug(`Getting properties from file: ${filepath}`);
+			const content = await this.client.getFileContents(filepath);
+			const properties = this.parseProperties(content);
 
-      // Get existing content and properties
-      logger.debug(`Updating properties for file: ${filepath}`);
-      const content = await this.client.getFileContents(filepath);
-      const existingProperties = this.parseProperties(content);
+			return {
+				success: true,
+				message: "Properties retrieved successfully",
+				properties
+			};
+		} catch (error) {
+			logger.error(
+				`Failed to get properties from ${filepath}:`,
+				error instanceof Error ? error : { error: String(error) }
+			);
+			return {
+				success: false,
+				message: `Failed to get properties: ${error instanceof Error ? error.message : String(error)}`,
+				errors: [String(error)]
+			};
+		}
+	}
 
-      // Merge properties
-      const mergedProperties = this.mergeProperties(existingProperties, newProperties, replace);
+	/**
+	 * Update properties of a note
+	 * @param filepath Path to the note
+	 * @param newProperties The new properties to apply
+	 * @param replace Whether to replace arrays instead of merging them
+	 * @returns The result of the update operation
+	 */
+	async updateProperties(
+		filepath: string,
+		newProperties: Partial<ObsidianProperties>,
+		replace: boolean = false
+	): Promise<PropertyManagerResult> {
+		try {
+			// Validate new properties
+			const validation = this.validateProperties(newProperties);
+			if (!validation.valid) {
+				logger.warn(`Invalid properties for ${filepath}:`, {
+					errors: validation.errors
+				});
+				return {
+					success: false,
+					message: "Invalid properties",
+					errors: validation.errors
+				};
+			}
 
-      // Generate new frontmatter
-      const newFrontmatter = this.generateProperties(mergedProperties);
+			// Get existing content and properties
+			logger.debug(`Updating properties for file: ${filepath}`);
+			const content = await this.client.getFileContents(filepath);
+			const existingProperties = this.parseProperties(content);
 
-      // Replace existing frontmatter or prepend to file (handles both \n and \r\n)
-      const newContent = content.replace(/^---[\s\S]*?---\r?\n/, '') || '';
-      const updatedContent = newFrontmatter + newContent;
+			// Merge properties
+			const mergedProperties = this.mergeProperties(
+				existingProperties,
+				newProperties,
+				replace
+			);
 
-      // Update file
-      await this.client.updateContent(filepath, updatedContent);
-      logger.debug(`Successfully updated properties for ${filepath}`);
+			// Generate new frontmatter
+			const newFrontmatter = this.generateProperties(mergedProperties);
 
-      return {
-        success: true,
-        message: 'Properties updated successfully',
-        properties: mergedProperties
-      };
-    } catch (error) {
-      logger.error(`Failed to update properties for ${filepath}:`, error instanceof Error ? error : { error: String(error) });
-      return {
-        success: false,
-        message: `Failed to update properties: ${error instanceof Error ? error.message : String(error)}`,
-        errors: [String(error)]
-      };
-    }
-  }
+			// Replace existing frontmatter or prepend to file (handles both \n and \r\n)
+			const newContent = content.replace(/^---[\s\S]*?---\r?\n/, "") || "";
+			const updatedContent = newFrontmatter + newContent;
+
+			// Update file
+			await this.client.updateContent(filepath, updatedContent);
+			logger.debug(`Successfully updated properties for ${filepath}`);
+
+			return {
+				success: true,
+				message: "Properties updated successfully",
+				properties: mergedProperties
+			};
+		} catch (error) {
+			logger.error(
+				`Failed to update properties for ${filepath}:`,
+				error instanceof Error ? error : { error: String(error) }
+			);
+			return {
+				success: false,
+				message: `Failed to update properties: ${error instanceof Error ? error.message : String(error)}`,
+				errors: [String(error)]
+			};
+		}
+	}
 }
